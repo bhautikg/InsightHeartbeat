@@ -1,8 +1,8 @@
 purchase_type: on_demand
 subnet_id: subnet-015405f53e806a38a
 num_instances: 1
-key_name: souzan-iam-keypair
-security_group_ids: sg-0e9978aec8f6fcb80
+key_name: bhautik-IAM-keypair
+security_group_ids: sg-04f40ef6e2da22b8d, sg-0cfbec6e19e43288c, sg-0e26a39f56c7cba4a
 instance_type: m4.large
 tag_name: kafka-cluster
 vol_size: 100
