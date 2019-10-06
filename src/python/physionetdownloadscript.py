@@ -2,7 +2,7 @@ import wfdb
 import json
 import numpy as np
 
-def saverecord(savedir, recorddir, recordname):
+def saverecord(savedir, recorddir, recordname, channel, recordsabridged):
     """
     This function reads in record signals and metadata using wfdb library (developed by Physionet.com)
     and writes them to disk as separate metadata and signal files.
@@ -11,11 +11,13 @@ def saverecord(savedir, recorddir, recordname):
     :param recordname: name of record
     """
     try:
-        signals, fields = wfdb.rdsamp(recordname, pb_dir=recorddir)
+        signals, fields = wfdb.rdsamp(recordname,channel_names=[channel], pb_dir=recorddir)
+         
     except Exception as e:
         # if record is empty, wrong type, etc. catch here and skip record
         print(e.message)
         return None
+    recordsabridged.write(recordname+"\n")
     outfileprefix = savedir + '/' + recordname
     np.savetxt(outfileprefix + '_signals.txt', signals, fmt='%.32f')
     metadata(outfileprefix, fields)
@@ -55,12 +57,16 @@ def metadata(outfileprefix, fields):
 
 
 if __name__ == '__main__':
-    directory = "/home/souzan/Documents/data/mghdb"
+    directory = "./data/mitdb"
     recordsfile = open(directory + "/RECORDS.txt", 'r')
+    recordsabridged = open("RECORDS_abridged.txt","a") 
     records = recordsfile.readlines()
-    recorddir = 'mghdb'
+    recorddir = 'mitdb'
+    channel = 'MLII'
     for i in range(1, len(records)):
         record = records[i]
         print(record)
         recordname = record.replace('\n', '')
-        saverecord(directory, recorddir, recordname)
+        saverecord(directory, recorddir, recordname, recordchan, recordsabridged)
+    
+    recordsabridged.close()
