@@ -11,16 +11,21 @@ def saverecord(savedir, recorddir, recordname, channel, recordsabridged):
     :param recordname: name of record
     """
     try:
-        signals, fields = wfdb.rdsamp(recordname,channel_names=[channel], pb_dir=recorddir)
+        signals, fields = wfdb.rdsamp(recordname,channel_names=["Elapsed time", channel], pb_dir=recorddir)
          
     except Exception as e:
         # if record is empty, wrong type, etc. catch here and skip record
         print(e.message)
         return None
-    recordsabridged.write(recordname+"\n")
+    
     outfileprefix = savedir + '/' + recordname
-    np.savetxt(outfileprefix + '_signals.txt', signals, fmt='%.32f')
-    metadata(outfileprefix, fields)
+    try:
+        np.savetxt(outfileprefix + '_signals.txt', signals, fmt='%.32f')
+        recordsabridged.write(recordname+"\n")
+        metadata(outfileprefix, fields)
+    except:
+        print("No MLII Signal for " + recordname)
+
     
 def parsemghdbcomments(comments):
     """
@@ -59,7 +64,7 @@ def metadata(outfileprefix, fields):
 if __name__ == '__main__':
     directory = "./data/mitdb"
     recordsfile = open(directory + "/RECORDS.txt", 'r')
-    recordsabridged = open("RECORDS_abridged.txt","a") 
+    recordsabridged = open(directory + "RECORDS_abridged.txt","a") 
     records = recordsfile.readlines()
     recorddir = 'mitdb'
     channel = 'MLII'
@@ -67,6 +72,6 @@ if __name__ == '__main__':
         record = records[i]
         print(record)
         recordname = record.replace('\n', '')
-        saverecord(directory, recorddir, recordname, recordchan, recordsabridged)
+        saverecord(directory, recorddir, recordname, channel, recordsabridged)
     
     recordsabridged.close()

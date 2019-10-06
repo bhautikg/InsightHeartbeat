@@ -40,11 +40,11 @@ public class flinkproccess {
         Properties properties = new Properties();
         properties.setProperty("bootstrap.servers", urls.KAFKA_URL + ":9092");
        // properties.setProperty("zookeeper.connect", urls.ZOOKEEPER_URL + ":2181");
-       // properties.setProperty("group.id", "flink_consumer");
+        properties.setProperty("group.id", "flink_consumer");
 
         FlinkKafkaConsumer010<String> kafkaConsumer = new FlinkKafkaConsumer010<String>("ecg-topic",
                 new SimpleStringSchema(), properties);
-        kafkaConsumer.setStartFromEarliest();
+        //kafkaConsumer.setStartFromEarliest();
         System.out.println("got consumer");
         DataStream<String> rawInputStream = env.addSource(kafkaConsumer);
 //mgh003,2019-09-26 19:12:43.678160-04:00,-0.10085470085470085721546240620228,0.04576271186440677984919034315681,93.54304635761589281628403114154935
@@ -53,7 +53,7 @@ public class flinkproccess {
         SingleOutputStreamOperator<List<Double>> windowedoutput = rawInputStream
                 .flatMap(new Splitter())
                 .keyBy(0)
-                .window(TumblingProcessingTimeWindows.of(Time.seconds(5)))
+                .window(TumblingProcessingTimeWindows.of(Time.seconds(2)))
                 .aggregate(new AggregateFunction<Tuple2<String, Double>, List<Double>, List<Double>> (){
                     /**
                      * Creates a new accumulator, starting a new aggregate.
@@ -84,6 +84,7 @@ public class flinkproccess {
                     @Override
                     public List<Double> add(Tuple2<String, Double> value, List<Double> accumulator) {
                         accumulator.add(value.f1);
+                        System.out.println(accumulator);
                         return accumulator;
                     }
 
@@ -137,9 +138,9 @@ public class flinkproccess {
         public static class Splitter implements FlatMapFunction<String, Tuple2<String, Double>> {
         @Override
         public void flatMap(String sentence, Collector<Tuple2<String, Double>> out) throws Exception {
-            List<String> list = new ArrayList<String>(Arrays.asList(sentence.split(",")));
-                out.collect(new Tuple2<String, Double>(list.get(0), Double.parseDouble(list.get(2))));
+            List<String> list = new ArrayList<>(Arrays.asList(sentence.split(",")));
+            System.out.println(list);
+            out.collect(new Tuple2<String, Double>(list.get(0), Double.parseDouble(list.get(1))));
             }
         }//SPLITTER
-
 }//CLASS FUnction

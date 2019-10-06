@@ -25,8 +25,8 @@ class Producer(object):
                             filemode='w')
         self.logger = logging.getLogger('py4j')
 
-        self.kafka_config = helpers.parse_config(kafka_config_infile)
-        self.s3bucket_config = helpers.parse_config(s3bucket_config_infile)
+#        self.kafka_config = helpers.parse_config(kafka_config_infile)
+#        self.s3bucket_config = helpers.parse_config(s3bucket_config_infile)
         self.producer = KafkaProducer(bootstrap_servers=ip_addr)
 
     def produce_ecg_signal_msgs(self, file_key):
@@ -38,18 +38,16 @@ class Producer(object):
         while True:
 
             s3 = boto3.client('s3')
-            obj = s3.get_object(Bucket=self.s3bucket_config['bucket'],
+            obj = s3.get_object(Bucket="testsmalldata",
                                 Key="%s_signals.txt" % file_key)
             for line in obj['Body'].iter_lines():
                 message_info = None
                 try:
-                    linesplit = line.decode().split(',')
-                    str_fmt = "{},{},{},{},{}"
+                    linesplit = line.decode().split(' ')
+                    str_fmt = "{},{},{}"
                     message_info = str_fmt.format(file_key,
                                                   datetime.now(pytz.timezone('US/Eastern')),
-                                                  linesplit[1],
-                                                  linesplit[2],
-                                                  linesplit[3]
+                                                  linesplit[1]
                                                   )
                 except Exception as e:
                     self.logger.error('fxn produce_ecg_signal_msgs error %s' % e)
@@ -59,10 +57,11 @@ class Producer(object):
                     msg = None
                     self.logger.debug('empty message %s'%e)
                 if msg is not None:
-                    self.producer.send(self.kafka_config['topic'], msg)
+                    self.producer.send("ecg-topic", msg)
                     msg_cnt += 1
                 print(message_info)
                 time.sleep(0.001)
+            break
 
 
 if __name__ == "__main__":
@@ -71,7 +70,7 @@ if __name__ == "__main__":
     args = sys.argv
     ip_addr = str(args[1])
     file_key = str(args[2])
-    kafka_config_infile = '../../.config/kafka.config'
-    s3bucket_config_infile = '../../.config/s3bucket.config'
-    prod = Producer(ip_addr, kafka_config_infile, s3bucket_config_infile)
+#    kafka_config_infile = '../../.config/kafka.config'
+#    s3bucket_config_infile = '../../.config/s3bucket.config'
+    prod = Producer(ip_addr)
     prod.produce_ecg_signal_msgs(file_key)

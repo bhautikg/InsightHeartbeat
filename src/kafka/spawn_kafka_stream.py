@@ -11,8 +11,8 @@ kafka_config = helpers.parse_config('../../.config/kafka.config')
 s3bucket_config = helpers.parse_config('../../.config/s3bucket.config')
 ipaddr = kafka_config['ip-addr'].split(',')
 s3 = boto3.client('s3')
-obj = s3.get_object(Bucket=s3bucket_config['bucket'],
-                    Key="RECORDS_abridged.txt")
+obj = s3.get_object(Bucket="testsmalldata,
+                    Key="RECORDS")
 records = obj['Body'].read().decode('utf-8').split('\n')
 
 records_per_node = int(round(len(records)/len(ipaddr)))
