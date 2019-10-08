@@ -37,7 +37,7 @@ class DataUtil:
                                     database="ecg",
                                     port="5432",
                                     user="ecg",
-                                    password="password")
+                                    password="pwd")
             cur = conn.cursor()
         except Exception as e:
             print(e)
@@ -49,20 +49,27 @@ class DataUtil:
         :param interval: time in seconds
         :return: dictionary of pandas dataframes containing latest samples within interval for each unique signame.
         """
-        sqlcmd = "SELECT id, signame, time, ecg \
+        sqlcmd = "SELECT id, signame, time, ecg, abnormal \
                     FROM signal_samples WHERE time > (SELECT MAX(time) - interval '{} second' \
                     FROM signal_samples) \
+                    AND ABNORMAL = TRUE \
                     ORDER BY signame;".format(interval)
         self.cur.execute(sqlcmd)
         df = pd.DataFrame(self.cur.fetchall(), columns=self.signal_schema)
-        print(df)
+        #get all the signal names unique in the dataframe above
         signames = df[self.signal_schema[1]].unique()
+        #Creates an dictionary for each signal name as key, and a empty dataframe obj as valye
         signals_dict = {elem: pd.DataFrame for elem in signames}
-        print("SIGNALS DICT")
-        print(signals_dict)
+
+        #Populates the dictionary for each key, with the the dataframe obtained from postgres for that key
         for key in signals_dict.keys():
-            signals_dict[key] = df[:][df.signame == key]
-            signals_dict[key].sort_values('time', inplace=True)
+            #signals_dict[key] = df[:][df.signame == key]
+            #print(df['signame'] == key)
+            signals_dict[key] = df.get_value(0, 'ecg')
+            print(signals_dict[key])
+
+            #signals_dict[key].sort_values('time', inplace=True)
+        
         return signals_dict.keys(), signals_dict
 
 
@@ -73,7 +80,8 @@ if __name__ == '__main__':
     while True:
         print("inside while loop")
         keys_ecg, signals_dict = datautil.getLastestECGSamples()
+
+        for key in keys_ecg:
+            print('ecg samples: ', key, len(signals_dict[key]))
+        time.sleep(1)
         break
-        # for key in keys_ecg:
-        #     print('ecg samples: ', key, len(signals_dict[key].index))
-        # time.sleep(1)
