@@ -35,7 +35,7 @@ Finally, the results are shown using Dash web app.
 
 ### Architecture
 <p align="center">
-<img src="https://github.com/bhautikg/InsightHeartbeat/tree/master/img/pipeline.png" width="700", height="400">
+<img src="https://github.com/bhautikg/InsightHeartbeat/blob/master/img/pipeline.PNG" width="700", height="400">
 </p>
 
 ## Installation
