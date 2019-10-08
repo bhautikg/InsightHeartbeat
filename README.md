@@ -1,4 +1,3 @@
-```markdown
 # Insight Heartbeat
 
 My Insight Project was to design a real-time continous ECG classification pipeline.
