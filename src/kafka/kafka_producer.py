@@ -3,6 +3,7 @@ import os
 import boto3
 import time
 from datetime import datetime
+from datetime import timedelta
 import pytz
 from kafka.producer import KafkaProducer
 import logging
@@ -34,7 +35,8 @@ class Producer(object):
         Produces messages and sends them to topic.
         """
         msg_cnt = 0
-
+        init_time= datetime.now()
+        fs=360
         while True:
 
             s3 = boto3.client('s3')
@@ -43,10 +45,14 @@ class Producer(object):
             for line in obj['Body'].iter_lines():
                 message_info = None
                 try:
-                    linesplit = line.decode().split(' ')
+                    linesplit = line.decode()
                     str_fmt = "{},{},{}"
+                    timestamp= init_time + timedelta(seconds=msg_cnt/fs)
+                    y = timestamp.strftime("%H:%M:%S.%f")
+                    y = y[:-2]
+
                     message_info = str_fmt.format(file_key,
-                                                  datetime.now(pytz.timezone('US/Eastern')),
+                                                  y,
                                                   linesplit[1]
                                                   )
                 except Exception as e:
