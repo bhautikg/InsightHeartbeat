@@ -24,7 +24,9 @@ class DataUtil:
         self.logger = logging.getLogger('py4j')
         #self.postgres_config = helpers.parse_config(postgres_config_infile)
         self.cur = self.connectToDB()
-        self.signal_schema = ['id', 'signame', 'time', 'ecg', 'abnormal']
+        self.signal_schema = ['ecg']
+        self.signame_schema = ['signame']
+        self.event_schema = ['id', 'signame', 'time', 'abnormal']
 
     def connectToDB(self):
         """
@@ -43,34 +45,80 @@ class DataUtil:
             print(e)
         return cur
 
-    def getLastestECGSamples(self, interval=10):
+    def getECGSignal(self, ecg_id):
         """
         Queries signal_samples table to return the latest samples within the given interval.
         :param interval: time in seconds
         :return: dictionary of pandas dataframes containing latest samples within interval for each unique signame.
         """
-        sqlcmd = "SELECT id, signame, time, ecg, abnormal \
+        print("INSIDE GET ECG SIGNAL")
+        print(ecg_id)
+        sqlcmd = "SELECT ecg\
+                    FROM signal_samples WHERE id = {} \
+                    AND ABNORMAL = TRUE::VARCHAR;".format(ecg_id)
+        self.cur.execute(sqlcmd)
+        
+        df = pd.DataFrame(self.cur.fetchall(), columns=self.signal_schema)
+        print(df)
+
+        return df
+    
+    def getLatestEvents(self, group_name, interval=10):
+        """
+        Queries signal_samples table to return the latest samples within the given interval.
+        :param interval: time in seconds
+        :return: dictionary of pandas dataframes containing latest samples within interval for each unique signame.
+        """ 
+        print("GET LATEST EVENTS")
+        print(group_name)  
+        sqlcmd = "SELECT id, signame, time, abnormal \
                     FROM signal_samples WHERE time > (SELECT MAX(time) - interval '{} second' \
                     FROM signal_samples) \
-                    AND ABNORMAL = TRUE \
-                    ORDER BY signame;".format(interval)
+                    AND signame={}\
+                    AND abnormal = TRUE::varchar \
+                    ORDER BY time \
+                    LIMIT 50;".format(interval, group_name)
         self.cur.execute(sqlcmd)
-        df = pd.DataFrame(self.cur.fetchall(), columns=self.signal_schema)
+        df = pd.DataFrame(self.cur.fetchall(), columns=self.event_schema)
         #get all the signal names unique in the dataframe above
-        signames = df[self.signal_schema[1]].unique()
-        #Creates an dictionary for each signal name as key, and a empty dataframe obj as valye
-        signals_dict = {elem: pd.DataFrame for elem in signames}
+        print(df)
+        return df
 
-        #Populates the dictionary for each key, with the the dataframe obtained from postgres for that key
-        for key in signals_dict.keys():
-            #signals_dict[key] = df[:][df.signame == key]
-            #print(df['signame'] == key)
-            signals_dict[key] = df.get_value(0, 'ecg')
-            print(signals_dict[key])
+    
+    def getAllEvents(self, interval=10):
+        """
+        Queries signal_samples table to return the latest samples within the given interval.
+        :param interval: time in seconds
+        :return: dictionary of pandas dataframes containing latest samples within interval for each unique signame.
+        """ 
+        print("GET All EVENTS") 
+        sqlcmd = "SELECT id, signame, time, abnormal \
+                    FROM signal_samples WHERE time < (SELECT MAX(time) - interval '{} second' \
+                    FROM signal_samples) \
+                    ORDER BY time \
+                    LIMIT 50;".format(interval)
+        self.cur.execute(sqlcmd)
+        df = pd.DataFrame(self.cur.fetchall(), columns=self.event_schema)
+        #get all the signal names unique in the dataframe above
+        print(df)
+        return df
 
-            #signals_dict[key].sort_values('time', inplace=True)
+    def getSigNames(self):
+        """
+        Queries signal_samples for unique signal names.
+        :return: dictionary of pandas dataframes containing latest samples within interval for each unique signame.
+        """
+        print("GET SIG NAMES")
+        sqlcmd = "SELECT DISTINCT signame \
+                    FROM signal_samples \
+                    ORDER BY signame;"
+        self.cur.execute(sqlcmd)
+        df = pd.DataFrame(self.cur.fetchall(), columns=self.signame_schema)
+        #get all the signal names unique in the dataframe above
+        signames = df.values.tolist()
+        print(signames)
         
-        return signals_dict.keys(), signals_dict
+        return signames
 
 
 if __name__ == '__main__':
@@ -79,9 +127,7 @@ if __name__ == '__main__':
     datautil = DataUtil()
     while True:
         print("inside while loop")
-        keys_ecg, signals_dict = datautil.getLastestECGSamples()
-
-        for key in keys_ecg:
-            print('ecg samples: ', key, len(signals_dict[key]))
-        time.sleep(1)
+        name = "1"
+        df = datautil.getAllEvents()
+        print(df.values.tolist())
         break

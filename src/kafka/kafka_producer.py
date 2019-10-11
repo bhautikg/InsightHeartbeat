@@ -47,9 +47,9 @@ class Producer(object):
                 try:
                     linesplit = line.decode()
                     str_fmt = "{},{},{}"
-                    timestamp= init_time + timedelta(seconds=msg_cnt/fs)
+                    timestamp= init_time + timedelta(seconds=round((msg_cnt/fs), 3))
                     y = timestamp.strftime("%H:%M:%S.%f")
-                    y = y[:-2]
+                    y = y[:-3]
 
                     message_info = str_fmt.format(file_key,
                                                   y,
