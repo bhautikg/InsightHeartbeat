@@ -4,7 +4,6 @@
  * @author Bhautik Gandhi
  */
 package com.insight;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
@@ -12,7 +11,6 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.*;
-
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 
 /*
@@ -23,7 +21,6 @@ import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 public class TimeScaleDBSink extends RichSinkFunction<String[]> {
 
     private static final long serialVersionUID = 1L;
-
     private Connection connection;
     private PreparedStatement preparedStatement;
     /**
@@ -59,11 +56,9 @@ public class TimeScaleDBSink extends RichSinkFunction<String[]> {
                 preparedStatement.setString(2, row[1]);
                 // abnormal event True or fals (but varchar for display reasons)
                 preparedStatement.setString(4, row[3]);
-
                 //covert ECG raw signal from String to String Array to Double Array
                 String str = row[2];
                 str = StringUtils.substringBetween(str, "[", "]");
-
                 String[] strArr = str.split(",");
                 Double[] arr = new Double[strArr.length];
                 for (int i = 0; i<strArr.length; i++)

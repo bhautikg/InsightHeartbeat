@@ -1,0 +1,10 @@
+purchase_type: on_demand
+subnet_id: subnet-015405f53e806a38a
+num_instances: 3
+key_name: bhautik-IAM-keypair
+security_group_ids: sg-0e9978aec8f6fcb80
+instance_type: m4.large
+tag_name: flink-cluster
+vol_size: 100
+role: worker
+use_eips: true

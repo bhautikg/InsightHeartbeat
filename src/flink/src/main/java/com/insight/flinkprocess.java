@@ -1,44 +1,41 @@
+/*
+ * Flink job for detecting arryhthmia from raw ECG signals from MLII
+ *
+ * @author Bhautik Gandhi
+ */
+
 package com.insight;
 
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.java.tuple.Tuple3;
-
-import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer010;
-
 import org.apache.flink.util.Collector;
-
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
-
-
 import javax.annotation.Nullable;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Properties;
-
-
 import java.util.*;
 
-
-public class flinkprocess {
+public class FlinkProcess {
     /**
      * The process takes raw input from Kafka topic and does the following
      * 1. Extracts and assigns timestamps and watermarks
      * 2. A flatmap function that creates a tuple3 for the signal name, timestamp, and raw ecg signal value.
      * 3. Keys by the signal name (groups)
      * 4. Creates a tumbling event window for each key
-     * 5. Aggregates the raw ecg signal for the duration of the windo
+     * 5. Aggregates the raw ecg signal for the duration of the window
      * 6. A flatmap function that detects anomalies
 
      *
@@ -47,33 +44,25 @@ public class flinkprocess {
      */
     public static void main(String[] args) throws Exception {
         // create execution environment
-        final ParameterTool params = ParameterTool.fromArgs(args);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        //Use EVENT Time for ordering streaming data
         env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
-
         // call HostURLs class to get URLs for all services
         HostURLs urls = new HostURLs();
         // create new property of Flink
         // set Kafka url
-        Properties properties_consumer = new Properties();
-        properties_consumer.setProperty("bootstrap.servers", urls.KAFKA_URL);
+        Properties properties = new Properties();
+        properties.setProperty("bootstrap.servers", urls.KAFKA_URL);
         //acknowledge all messages so as to not drop any signals.
-        properties_consumer.setProperty("acks", "all");
-        properties_consumer.setProperty("group.id", "flink_consumer");
-
-
+        properties.setProperty("acks", "all");
+        properties.setProperty("group.id", "flink_consumer");
         //Create the kafka consumer
         FlinkKafkaConsumer010<String> kafkaConsumer = new FlinkKafkaConsumer010<String>("ecg-topic2",
-                new SimpleStringSchema(), properties_consumer);
+                new SimpleStringSchema(), properties);
         //Read from begining
         kafkaConsumer.setStartFromEarliest();
-
         //read from the topic, extract timestamps and assign watermark to each message. Keeps streams in order
         DataStream<String> rawInputStream = env.addSource(kafkaConsumer)
                                                 .assignTimestampsAndWatermarks(new PunctuatedAssigner());
-
-        
         // Set flatmap parallelism to 1 in order to not shuffle the signals coming in, need this in order to proccess the signal
         // key by user_id/file name
         // Window of 1800 elements (5 seconds of data) with a slide of 4 seconds. In order to minimize overlap and improve performance
@@ -84,16 +73,10 @@ public class flinkprocess {
                 .keyBy(t->t.f0)
                 .countWindow(1800, 1440)
                 .aggregate(new SignalAggregate());
-
-
-
         DataStream<String[]> finalOutput = output.flatMap(new DetectAnomaly());
         finalOutput.addSink(new TimeScaleDBSink());
-
-
         env.execute("Flink job");
     } //MAIN Function
-
 
     static class Splitter implements FlatMapFunction<String, Tuple3<String, String, Double>> {
         /**
@@ -121,84 +104,69 @@ public class flinkprocess {
          * @throws Exception This method may throw exceptions. Throwing an exception will cause the operation
          *                   to fail and may trigger recovery.
          */
-        private static final String[] EMPTY_ARRAY = new String[0];
 
         @Override
         public void flatMap(Tuple3<String, String[], double[]> value, Collector<String[]> out) throws Exception {
 
-            double[] ecg_data = value.f2;
+            double[] ecgData = value.f2;
             String[] times = value.f1;
-            String signame= value.f0;
+            String sigName= value.f0;
             String[] result = new String[4];
-
             //create a date for the current date need this for the database timestamp
-            String loc_date = LocalDate.now().toString();
-
+            String locDate = LocalDate.now().toString();
             //Returns a linked list of indices of R peaks
-            LinkedList<Integer> peaks = peak.findPeaks(ecg_data, 150, 0.75);
+            LinkedList<Integer> peaks = Peak.findPeaks(ecgData, 150, 0.75);
             // Need at least 2 R peaks to detect anomaly
             if(peaks.size()<2){
                 return;
             }
 
             //Creates arrays for the values of Average Teager Energy Function
-            double[] ANE = new double[peaks.size()-1];
+            double[] AvgTeagE = new double[peaks.size()-1];
             //Creates array for R-R interval values
-            double[] interval = new double[ANE.length];
-
-            //Loop between each R-R peak
+            double[] interval = new double[AvgTeagE.length];
+            //Loop between each R-R Peak
             for(int i=0;i<peaks.size()-1 ;i++) {
                 int start = peaks.get(i);
                 int end = peaks.get(i + 1);
-
-                //get the raw ecg signals between the R-R peak
-                double[] ecg_slice = Arrays.copyOfRange(ecg_data, start, end + 1);
-
+                //get the raw ecg signals between the R-R Peak
+                double[] ecgSlice = Arrays.copyOfRange(ecgData, start, end + 1);
                 //Initialize the Teager Energy value array for each signal
-                double[] NE = new double[ecg_slice.length];
-
+                double[] teagerNrg = new double[ecgSlice.length];
                 //For each ecg raw value, calculate the Teager Energy
-                for (int j = 0; j < ecg_slice.length - 2; j++) {
-                    NE[j] = ecg_slice[j + 1] * ecg_slice[j + 1] - ecg_slice[j] * ecg_slice[j + 2];
+                for (int j = 0; j < ecgSlice.length - 2; j++) {
+                    teagerNrg[j] = ecgSlice[j + 1] * ecgSlice[j + 1] - ecgSlice[j] * ecgSlice[j + 2];
                 }
-                // for this R-R peak, get the average Teager energy value
-                ANE[i] = Arrays.stream(NE).sum() / NE.length;
-                Double ANE_Val= ANE[i];
+                // for this R-R Peak, get the average Teager energy value
+                AvgTeagE[i] = Arrays.stream(teagerNrg).sum() / teagerNrg.length;
+                Double AvgTeagVal= AvgTeagE[i];
                 //Calculate the R-R interval in seconds, fs = 360 Hz
-                interval[i] = NE.length / 360.0;
-                Double RR = interval[i];
-
-                //Create a time stamp for this R-R peak
+                interval[i] = teagerNrg.length / 360.0;
+                Double rrInterval = interval[i];
+                //Create a time stamp for this R-R Peak
                 String time = times[i];
-                String timestamp = loc_date + " "+ time;
-
+                String timestamp = locDate + " "+ time;
                 // If ane < 0.02, abnormality detected
-                if (ANE_Val < 0.02) {
-                    String slice_str =Arrays.toString(ecg_slice);
-
-                    result[0] = signame ;
+                if (AvgTeagVal < 0.02) {
+                    String ecgSliceStr =Arrays.toString(ecgSlice);
+                    result[0] = sigName ;
                     result[1] = timestamp ;
-                    result[2] = slice_str ;
+                    result[2] = ecgSliceStr ;
                     result[3] = "TRUE";
-
                     out.collect(result);
-
                 }
-                // If RR < 0.4, abnormality detected
-                else if (RR < 0.4) {
-
-                    String slice_str =Arrays.toString(ecg_slice);
-
-                    result[0] = signame ;
+                // If rrInterval < 0.4, abnormality detected
+                else if (rrInterval < 0.4) {
+                    String ecgSliceStr =Arrays.toString(ecgSlice);
+                    result[0] = sigName ;
                     result[1] = timestamp ;
-                    result[2] = slice_str ;
+                    result[2] = ecgSliceStr ;
                     result[3] = "TRUE";
                     out.collect(result);
-
                 }
                 //Else its normal
                 else {
-                    result[0] = signame ;
+                    result[0] = sigName ;
                     result[1] = timestamp ;
                     //return a signal thats 0
                     result[2] = "[0.0, 0.0]";
@@ -209,7 +177,6 @@ public class flinkprocess {
             }
         }
     }//DetectAnomaly close
-
     static class SignalAggregate implements AggregateFunction<Tuple3<String, String, Double>
             , Tuple3<String, List<String>, List<Double>>, Tuple3<String, String[], double[]>>{
         /**
@@ -245,7 +212,6 @@ public class flinkprocess {
         @Override
         public Tuple3<String, List<String>, List<Double>> add(Tuple3<String, String, Double> value,
                                                         Tuple3<String, List<String>, List<Double>>  accumulator) {
-
             accumulator.f0 = value.f0;
             accumulator.f1.add(value.f1);
             accumulator.f2.add(value.f2);
@@ -265,12 +231,10 @@ public class flinkprocess {
             for (int i = 0; i < target.length; i++) {
                 target[i] = accumulator.f2.get(i);                // java 1.5+ style (outboxing)
             }
-
             String[] target2 = new String[accumulator.f1.size()];
             for (int i = 0; i < target2.length; i++) {
                 target2[i] = accumulator.f1.get(i);                // java 1.5+ style (outboxing)
             }
-
             Tuple3<String, String[], double[]> result = new Tuple3<>(accumulator.f0,target2, target);
             return result;
         }
@@ -294,16 +258,14 @@ public class flinkprocess {
             return a;
         }
     }//Signal aggregate close
-
     public static class PunctuatedAssigner implements AssignerWithPunctuatedWatermarks<String> {
 
-        String format = "HH:mm:ss.SSS";
+        static final String FORMAT = "HH:mm:ss.SSS";
 
         @Override
         public long extractTimestamp(String element, long previousElementTimestamp) {
             String[] s =element.split(",");
-
-            SimpleDateFormat formatter = new SimpleDateFormat(format);
+            SimpleDateFormat formatter = new SimpleDateFormat(FORMAT);
             Date date = null;
             try {
                 date = formatter.parse(s[1]);
@@ -312,8 +274,6 @@ public class flinkprocess {
                 e.printStackTrace();
             }
             long mills = date.getTime();
-
-
             return mills;
         }//Extract Timestamp close
 
@@ -339,7 +299,7 @@ public class flinkprocess {
         public Watermark checkAndGetNextWatermark(String lastElement, long extractedTimestamp) {
             String[] s =lastElement.split(",");
 
-            SimpleDateFormat formatter = new SimpleDateFormat(format);
+            SimpleDateFormat formatter = new SimpleDateFormat(FORMAT);
             Date date = null;
             try {
                 date = formatter.parse(s[1]);
@@ -347,7 +307,6 @@ public class flinkprocess {
                 e.printStackTrace();
             }
             long mills = date.getTime();
-            
             //Return a watermark if the current timestamp is greater than the last element
             if(mills < extractedTimestamp){
                 return new Watermark(extractedTimestamp);
@@ -357,6 +316,4 @@ public class flinkprocess {
             }
         }// Check and get Next watermark close
     } // Punctuated Assigner Close
-
-
 }//FLINK PROCESS CLASS FUNCTION CLOSE

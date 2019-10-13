@@ -109,7 +109,7 @@ under the License.
 					<archive>
 						<index>true</index>
 						<manifest>
-							<mainClass>com.insight.flinkprocess</mainClass>
+							<mainClass>com.insight.FlinkProcess</mainClass>
 						</manifest>
 					</archive>
 				</configuration>

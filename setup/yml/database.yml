@@ -1,0 +1,10 @@
+purchase_type: on_demand
+subnet_id: subnet-015405f53e806a38a
+num_instances: 1
+key_name: bhautik-IAM-keypair
+security_group_ids: sg-0fd83e9cf2f4a5c63
+instance_type: m4.large
+tag_name: database
+vol_size: 100
+role: master
+use_eips: true

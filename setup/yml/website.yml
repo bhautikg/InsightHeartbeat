@@ -1,0 +1,11 @@
+purchase_type: on_demand
+subnet_id: subnet-015405f53e806a38a
+num_instances: 1
+key_name: bhautik-IAM-keypair
+security_group_ids: sg-01ab667fd801f033f
+instance_type: t2.micro
+tag_name: website
+vol_size: 100
+role: master
+use_eips: true
+i

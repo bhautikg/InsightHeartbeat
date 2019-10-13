@@ -1,0 +1,50 @@
+SSH into node:
+peg fetch database
+peg ssh database 1
+
+Installing PostgreSQL-10.0 (on ubuntu<17.04):
+sudo add-apt-repository 'deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -sc)-pgdg main'
+wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+sudo apt-get update
+sudo apt-get install postgresql-10
+
+Installing TimescaleDB library for postgres:
+sudo add-apt-repository ppa:timescale/timescaledb-ppa
+sudo apt-get update
+sudo apt install timescaledb-postgresql-10"
+
+In /etc/postgresql/10/main/postgresql.conf add:
+shared_preload_libraries = 'timescaledb'
+listen_addresses = '*'
+
+In /etc/postgresql/10/main/pg_hba.conf set:
+# IPv4 local connections:
+host    all             all             0.0.0.0/0            md5
+# IPv6 local connections:
+host    all             all             ::/0                 md5
+
+Create super-user.
+sudo service postgresql restart
+sudo -u postgres createuser --interactive
+[ecg]
+[y]
+
+Create database and add user to it:
+sudo -u postgres createdb ecg
+sudo adduser ecg
+
+Create TimescaleDB hypertable and chunk it based on time:
+sudo -i -u ecg
+psql
+CREATE EXTENSION timescaledb;
+
+CREATE TABLE signal_samples (
+    id serial NOT NULL,
+    signame varchar(50) NOT NULL,
+    time timestamp NOT NULL,
+    ecg float[],
+    abnormal varchar(5) NOT NULL,
+    PRIMARY_KEY(signame, time)
+);
+
+SELECT create_hypertable('signal_samples', 'time', chunk_time_interval => interval '1 minute');
