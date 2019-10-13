@@ -25,7 +25,6 @@ class DataUtil:
         #self.postgres_config = helpers.parse_config(postgres_config_infile)
         self.cur = self.connectToDB()
         self.signal_schema = ['ecg']
-        self.signame_schema = ['signame']
         self.event_schema = ['id', 'signame', 'time', 'abnormal']
 
     def connectToDB(self):
@@ -34,7 +33,6 @@ class DataUtil:
         """
         cur = None
         try:
-            print("Inside connect to db")
             conn = psycopg2.connect(host="ec2-34-220-61-87.us-west-2.compute.amazonaws.com",
                                     database="ecg",
                                     port="5432",
@@ -51,15 +49,12 @@ class DataUtil:
         :param interval: time in seconds
         :return: dictionary of pandas dataframes containing latest samples within interval for each unique signame.
         """
-        print("INSIDE GET ECG SIGNAL")
-        print(ecg_id)
         sqlcmd = "SELECT ecg\
-                    FROM signal_samples WHERE id = {} \
-                    AND ABNORMAL = TRUE::VARCHAR;".format(ecg_id)
+                    FROM signal_samples WHERE id = {}\
+                    AND ABNORMAL = 'TRUE';".format(ecg_id)
         self.cur.execute(sqlcmd)
         
         df = pd.DataFrame(self.cur.fetchall(), columns=self.signal_schema)
-        print(df)
 
         return df
     
@@ -68,30 +63,25 @@ class DataUtil:
         Queries signal_samples table to return the latest samples within the given interval.
         :param interval: time in seconds
         :return: dictionary of pandas dataframes containing latest samples within interval for each unique signame.
-        """ 
-        print("GET LATEST EVENTS")
-        print(group_name)  
+        """  
         sqlcmd = "SELECT id, signame, time, abnormal \
-                    FROM signal_samples WHERE time > (SELECT MAX(time) - interval '{} second' \
-                    FROM signal_samples) \
-                    AND signame={}\
-                    AND abnormal = TRUE::varchar \
-                    ORDER BY time \
-                    LIMIT 50;".format(interval, group_name)
+                    FROM signal_samples \
+                    WHERE signame={}::VARCHAR\
+                    AND abnormal = 'TRUE' \
+                    ORDER BY time DESC \
+                    LIMIT 50;".format(group_name)
         self.cur.execute(sqlcmd)
         df = pd.DataFrame(self.cur.fetchall(), columns=self.event_schema)
         #get all the signal names unique in the dataframe above
-        print(df)
         return df
 
     
-    def getAllEvents(self, interval=10):
+    def getAllEvents(self, interval=60):
         """
         Queries signal_samples table to return the latest samples within the given interval.
         :param interval: time in seconds
         :return: dictionary of pandas dataframes containing latest samples within interval for each unique signame.
         """ 
-        print("GET All EVENTS") 
         sqlcmd = "SELECT id, signame, time, abnormal \
                     FROM signal_samples WHERE time < (SELECT MAX(time) - interval '{} second' \
                     FROM signal_samples) \
@@ -100,25 +90,8 @@ class DataUtil:
         self.cur.execute(sqlcmd)
         df = pd.DataFrame(self.cur.fetchall(), columns=self.event_schema)
         #get all the signal names unique in the dataframe above
-        print(df)
         return df
 
-    def getSigNames(self):
-        """
-        Queries signal_samples for unique signal names.
-        :return: dictionary of pandas dataframes containing latest samples within interval for each unique signame.
-        """
-        print("GET SIG NAMES")
-        sqlcmd = "SELECT DISTINCT signame \
-                    FROM signal_samples \
-                    ORDER BY signame;"
-        self.cur.execute(sqlcmd)
-        df = pd.DataFrame(self.cur.fetchall(), columns=self.signame_schema)
-        #get all the signal names unique in the dataframe above
-        signames = df.values.tolist()
-        print(signames)
-        
-        return signames
 
 
 if __name__ == '__main__':
@@ -127,7 +100,10 @@ if __name__ == '__main__':
     datautil = DataUtil()
     while True:
         print("inside while loop")
-        name = "1"
+        name = "114"
+        print(name)
         df = datautil.getAllEvents()
-        print(df.values.tolist())
+        #x=list(range(len(df.get_value(0,'ecg'))))
+        #y_sig= df.get_value(0,'ecg')
+        print(df)
         break

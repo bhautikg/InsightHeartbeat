@@ -1,6 +1,6 @@
 """
-Displays summary visual showing aggreagated battery data using Dash library.
-Graph 
+Displays Table of latest latest ECG events, and whether they are normal.
+You can selet an Event ID which is True for abnormal to view its raw signal 
 Template:
 sudo python run_app.py
 """
@@ -46,15 +46,19 @@ queries_name={'signames_ecg':['101', '103']}
 queries_id={'id':['1']}
 
 evnt_df = query_helper.getAllEvents()
-sig_df = query_helper.getECGSignal(1)
-x=list(range(len(sig_df.get_value(0,'ecg'))))
-y_sig= sig_df.get_value(0,'ecg')
-trace = []
-trace.append(go.Scatter(x=x, y=y_sig, mode='lines',
-                marker={'size': 8, "opacity": 0.6, "line": {'width': 0.5}}, ))
-layout =  go.Layout(title="ECG abnormal signal", colorway=['#fdae61', '#abd9e9', '#2c7bb6'],
-                                yaxis={"title": "Voltage(mV)"}, xaxis={"title": "ECG Signal"})
-fig = go.Figure(data = trace, layout = layout)
+# sig_df = query_helper.getECGSignal('50')
+# x=list(range(len(sig_df.get_value(0,'ecg'))))
+# y_sig= sig_df.get_value(0,'ecg')
+# trace = []
+# trace.append(go.Scatter(x=x, y=y_sig, mode='lines',
+#                 marker={'size': 8, "opacity": 0.6, "line": {'width': 0.5}}, ))
+# print("FIRST TRACE")
+# print(trace)
+# layout =  go.Layout(title="ECG abnormal signal", colorway=['#fdae61', '#abd9e9', '#2c7bb6'],
+#                                 yaxis={"title": "Voltage(mV)"}, xaxis={"title": "ECG Signal"})
+# fig = go.Figure(data = trace, layout = layout)
+# print("FIRST FIGURE")
+# print (fig)
 
 
 @cache.memoize(timeout=TIMEOUT)
@@ -66,23 +70,23 @@ def get_signames():
 #     queries_name['signames_ecg'] = query_helper.getSigNames()
 
 # Sets Table and dropdown options
-all_groups = queries_name['signames_ecg']
-all_ids = queries_id['id']
-table_order = ["signal name", "timestamp", "abnormal"]
-get_signames()
+
+table_order = ["id", "signal name", "timestamp", "abnormal"]
+
 
 # Sets Dash application parameters
 #server = app.server
 app.layout = html.Div([
         html.Div([
                 dcc.Markdown(ded("""
-                **Charge Tracker: near real time battery monitoring**
-                For each battery group, displays average energy (lines) and
-                standard deviation (shaded area).
+                **ECG Tracker: near real time ECG Monitoring**
+                Choose a patient ID to see all latest abnormal events for them
                 """)),
-                dcc.Graph(
-                        id="ECG signal",
-                        figure = fig),
+                # dcc.Graph(
+                #         id="ECGGraph"),
+                #         # figure = fig),
+                dcc.Tab(label='ECG Signals', style={'backgroundColor':'black',
+                'color':'white'}, children=html.Div(id='ecg-output')),
                 dcc.Interval(
                         id="real_time_updates",
                         interval=10 * 1000,
@@ -95,12 +99,7 @@ app.layout = html.Div([
                 ),
         html.Div([
                 dcc.Markdown(ded("""
-                **Group deep drive**
-                For given group and number of discharge cycles, identify
-                whether batteries are representatives or outliers.
-                
-                Note: 100 % percent deviation indicates value is
-                2 standard deviations away from the group's mean.
+                **Table of all recent ECG events**
                 """)),
                 html.Div(
                         dcc.Input(
@@ -143,67 +142,71 @@ app.layout = html.Div([
 
 ## FUNCTION DEFINITIONS
 
-# def analyze_all_groups():
+# def make_trace(df):
 #     """
-#     Aggregates queried Cassandra data by mean, std dev, counts, and error.
+#     For selected group "c", creates Plotly scatter objects.
 #     """
-#     # Pulls all data from Cassandra into Pandas dataframe
-#     df_all = query_cassandra("""
-#                              SELECT
-#                              group,
-#                              cycle,
-#                              double_sum(metric) AS metric
-#                              FROM battery_metrics.discharge_energy;
-#                              """)
+#     print("MAKE TRACE")
+#     x=list(range(len(df.get_value(0,'ecg'))))
+#     print(x)
+#     print("y_sig")
+#     y_sig= df.get_value(0,'ecg')
+#     print(y_sig)
+#     print("TRACE")
+#     trace = []
+#     trace.append(go.Scatter(x=x, y=y_sig, mode='lines',
+#                 marker={'size': 8, "opacity": 0.6, "line": {'width': 0.5}}, ))
+#     print(trace)
 
-#     # Calculates aggreates (mean, std dev, count, error, upper/lower limits)
-#     pg = df_all.groupby(["group", "cycle"])
-#     df = pd.DataFrame({"mean": pg["metric"].mean(),
-#                        "stdev": pg["metric"].std(),
-#                        "count": pg["metric"].count(),}).reset_index()
-#     df["error"] = df["stdev"] * 100.0 / df["mean"]
-#     return df
-
-def make_trace(df):
-    """
-    For selected group "c", creates Plotly scatter objects.
-    """
-    x=list(range(len(df.get_value(0,'ecg'))))
-    y_sig= df.get_value(0,'ecg')
-    trace = []
-    trace.append(go.Scatter(x=x, y=y_sig, mode='lines',
-                marker={'size': 8, "opacity": 0.6, "line": {'width': 0.5}}, ))
-
-    return trace
+#     return trace
 
 
 # Callback updates graph (OUTPUT) according to time interval (INPUT)
-@app.callback(Output("ECG signal", "figure"),
+@app.callback(Output('ecg-output', 'children'),
               [Input('ecg_id', 'value')]
               )
 def update_graph(ecg_id):
     """
-    Queries table, analyzes data, and assembles results in Dash format.
+    Queries for the event Id and and assembles results in Dash format.
     """
 
     if ecg_id is not None :
 
-            ecg_id = "'{}'".format(ecg_id)
-            df = query_helper.getECGSignal(ecg_id)            
-    else:
-            df = query_helper.getECGSignal(1)
-    print ("UPDATE GRAPH")
-    print(df)
+            if ecg_id != "":
+                    ecg_id = "'{}'".format(ecg_id)
+                    df = query_helper.getECGSignal(ecg_id)
+                    # Creates all scatter data for real-time graph
+                #     trace = make_trace(df)
+                    # Sets layout 
+                    x=list(range(len(df.at[0,'ecg'])))
 
-    # Creates all scatter data for real-time graph
-    trace = [make_trace(df)]
+                    y_sig= df.get_value(0,'ecg')
 
-    # Sets layout 
-    layout =  go.Layout(title="ECG abnormal signal", colorway=['#fdae61', '#abd9e9', '#2c7bb6'],
-                        yaxis={"title": "Voltage(mV)"}, xaxis={"title": "ECG Signal"})
-    fig = go.Figure(data = trace, layout = layout)
 
-    return fig
+                    return html.Div(className='ecg', children=[
+                        html.Div(style={'display': 'flex', 'height': '40vh'},
+                                children=[dcc.Graph(
+                                id=ecg_id,
+                                style={'width': '100%'},
+                                figure={
+                                        'data': [
+                                        {'x': x,
+                                        'y': y_sig,
+                                        'mode': 'line', 'name': ecg_id, 'line': {'color':'rgb(240,0,0)'},}
+                                        ],
+                                        'layout': {
+                                        'font': {'color':'#fff'},
+                                        'title': '{}'.format(ecg_id),
+                                        'xaxis': {'title': 'time', 'color': '#fff', 'showgrid': 'False'},
+                                        'yaxis': {'title': 'voltage (mv)', 'color': '#fff', 'showgrid': 'True',
+                                        'paper_bgcolor':'#000', 'plot_bgcolor':'#000'}
+                                        }
+                                }
+                                )]
+                                        
+                        )]) 
+ 
+
 
 # Callback updates graph (OUTPUT) according to time interval (INPUT)
 @app.callback(Output('group_detail', 'data'),
@@ -214,19 +217,16 @@ def update_table(group_name, interval, max_rows=50):
     """
     Queries table, analyzes data, and assembles results in Dash format.
     """
-    # Pulls all data from Cassandra into Pandas dataframe
+    # Pulls all data from TSDB and puts it in pandas dataframe
     
     if group_name is None:
             df = query_helper.getAllEvents()
     else:
-
-            group_name = "'{}'".format(group_name)
-            df = query_helper.getLatestEvents(group_name)
-
-    print ("UPDATE TABLE")
-    print(df)
-    queries_id['id'] = df['id'].tolist
-    print(queries_id['id'])
+            if len(group_name) != 3:
+                   df = query_helper.getAllEvents()
+            else:
+                   group_name = "'{}'".format(group_name)
+                   df = query_helper.getLatestEvents(group_name)
 
 
     return df.to_dict("records")
