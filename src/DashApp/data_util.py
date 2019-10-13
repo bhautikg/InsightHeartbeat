@@ -83,7 +83,7 @@ class DataUtil:
         :return: dictionary of pandas dataframes containing latest samples within interval for each unique signame.
         """ 
         sqlcmd = "SELECT id, signame, time, abnormal \
-                    FROM signal_samples WHERE time < (SELECT MAX(time) - interval '{} second' \
+                    FROM signal_samples WHERE time > (SELECT MAX(time) - interval '{} second' \
                     FROM signal_samples) \
                     ORDER BY time \
                     LIMIT 50;".format(interval)
