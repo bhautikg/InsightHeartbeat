@@ -49,9 +49,6 @@ Finally, the results are shown using Dash web app.
 * To setup database follow setup/db_setup.txt.
 * To start the pipeline follow the instructions in src/README.md 
 
-### Testing
-* Unittests can be run using the run_unittests.sh file in the ./test folder. Results are stored in ./test/results.txt.
-
 ### Cluster Configuration
 * four m4.large EC2 instances for Kafka producers
 * four m4.large EC2 instances for Flink which processes and classifies the signals and writes to postgres database
