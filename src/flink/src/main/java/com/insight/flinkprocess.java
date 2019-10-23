@@ -8,8 +8,12 @@ package com.insight;
 
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.common.typeinfo.TypeHint;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -17,7 +21,11 @@ import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer010;
 import org.apache.flink.util.Collector;
+
+import java.io.IOException;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
@@ -53,48 +61,29 @@ public class FlinkProcess {
         Properties properties = new Properties();
         properties.setProperty("bootstrap.servers", urls.KAFKA_URL);
         //acknowledge all messages so as to not drop any signals.
-        properties.setProperty("acks", "all");
+        //properties.setProperty("acks", "all");
         properties.setProperty("group.id", "flink_consumer");
         //Create the kafka consumer
-        FlinkKafkaConsumer010<String> kafkaConsumer = new FlinkKafkaConsumer010<String>("ecg-topic2",
-                new SimpleStringSchema(), properties);
+        FlinkKafkaConsumer010<Tuple3<String,String, Double>> kafkaConsumer = new FlinkKafkaConsumer010<>("ecg-topic2",
+                new EcgRecSchema(), properties);
         //Read from begining
         kafkaConsumer.setStartFromEarliest();
         //read from the topic, extract timestamps and assign watermark to each message. Keeps streams in order
-        DataStream<String> rawInputStream = env.addSource(kafkaConsumer)
+        DataStream<Tuple3<String, String, Double>> rawInputStream = env.addSource(kafkaConsumer)
+                                                .rebalance()
                                                 .assignTimestampsAndWatermarks(new PunctuatedAssigner());
-        // Set flatmap parallelism to 1 in order to not shuffle the signals coming in, need this in order to proccess the signal
+
         // key by user_id/file name
         // Window of 1800 elements (5 seconds of data) with a slide of 4 seconds. In order to minimize overlap and improve performance
         // aggregate function takes input, aggregates ECG values and time stamps for each key for each window
-
         DataStream<Tuple3<String, String[], double[]>> output = rawInputStream
-                .flatMap(new Splitter()).setParallelism(1)
                 .keyBy(t->t.f0)
-                .countWindow(1800, 1440)
+                .countWindow(576, 288)
                 .aggregate(new SignalAggregate());
-        DataStream<String[]> finalOutput = output.flatMap(new DetectAnomaly());
-        finalOutput.addSink(new TimeScaleDBSink());
+        DataStream<String[]> finalOutput = output.flatMap(new DetectAnomaly()).name("detect anomaly");
+        finalOutput.addSink(new TimeScaleDBSink()).name("TimeScaleDBSink");
         env.execute("Flink job");
     } //MAIN Function
-
-    static class Splitter implements FlatMapFunction<String, Tuple3<String, String, Double>> {
-        /**
-         * The core method of the FlatMapFunction. Takes an element from the input data set and transforms
-         * it into zero, one, or more elements.
-         *
-         * @param sentence The input string "signal name, timestamp(HH:mm:ss.SSS), signal value mV".
-         * @param out   The collector for returning result Tuple3<String, String, Double></String,>
-         * @throws Exception This method may throw exceptions. Throwing an exception will cause the operation
-         *                   to fail and may trigger recovery.
-         */
-        @Override
-        public void flatMap(String sentence, Collector<Tuple3<String,String, Double>> out) throws Exception {
-            List<String> list = new ArrayList<>(Arrays.asList(sentence.split(",")));
-            Double signal= Double.parseDouble(list.get(2));
-            out.collect(new Tuple3<String, String, Double>(list.get(0),list.get(1), signal));
-        }
-    }//SPLITTER close
     static class DetectAnomaly implements FlatMapFunction<Tuple3<String, String[], double[]>, String[]> {
         /**
          * Detects anomalies and returns a String array. The sink function can't serialize a tuple for some reason.
@@ -115,7 +104,8 @@ public class FlinkProcess {
             //create a date for the current date need this for the database timestamp
             String locDate = LocalDate.now().toString();
             //Returns a linked list of indices of R peaks
-            LinkedList<Integer> peaks = Peak.findPeaks(ecgData, 150, 0.75);
+            LinkedList<Integer> peaks = Peak.findPeaks(ecgData, 50, 0.75);
+
             // Need at least 2 R peaks to detect anomaly
             if(peaks.size()<2){
                 return;
@@ -146,8 +136,9 @@ public class FlinkProcess {
                 //Create a time stamp for this R-R Peak
                 String time = times[i];
                 String timestamp = locDate + " "+ time;
+
                 // If ane < 0.02, abnormality detected
-                if (AvgTeagVal < 0.02) {
+                if (AvgTeagVal < 0.018) {
                     String ecgSliceStr =Arrays.toString(ecgSlice);
                     result[0] = sigName ;
                     result[1] = timestamp ;
@@ -166,15 +157,10 @@ public class FlinkProcess {
                 }
                 //Else its normal
                 else {
-                    result[0] = sigName ;
-                    result[1] = timestamp ;
-                    //return a signal thats 0
-                    result[2] = "[0.0, 0.0]";
-                    result[3] = "FALSE";
-                    out.collect(result);
-                    return;
                 }
-            }
+            }// For Loop
+//            endTime = System.nanoTime() - startTime;
+//            System.out.println("find Anomaly time = " + endTime/1000000.0 + " ms");
         }
     }//DetectAnomaly close
     static class SignalAggregate implements AggregateFunction<Tuple3<String, String, Double>
@@ -258,17 +244,16 @@ public class FlinkProcess {
             return a;
         }
     }//Signal aggregate close
-    public static class PunctuatedAssigner implements AssignerWithPunctuatedWatermarks<String> {
+    public static class PunctuatedAssigner implements AssignerWithPunctuatedWatermarks<Tuple3<String, String, Double>> {
 
         static final String FORMAT = "HH:mm:ss.SSS";
 
         @Override
-        public long extractTimestamp(String element, long previousElementTimestamp) {
-            String[] s =element.split(",");
+        public long extractTimestamp(Tuple3<String, String, Double> element, long previousElementTimestamp) {
             SimpleDateFormat formatter = new SimpleDateFormat(FORMAT);
             Date date = null;
             try {
-                date = formatter.parse(s[1]);
+                date = formatter.parse(element.f1);
 
             } catch (ParseException e) {
                 e.printStackTrace();
@@ -296,13 +281,11 @@ public class FlinkProcess {
          */
         @Nullable
         @Override
-        public Watermark checkAndGetNextWatermark(String lastElement, long extractedTimestamp) {
-            String[] s =lastElement.split(",");
-
+        public Watermark checkAndGetNextWatermark(Tuple3<String, String, Double> lastElement, long extractedTimestamp) {
             SimpleDateFormat formatter = new SimpleDateFormat(FORMAT);
             Date date = null;
             try {
-                date = formatter.parse(s[1]);
+                date = formatter.parse(lastElement.f1);
             } catch (ParseException e) {
                 e.printStackTrace();
             }
@@ -316,4 +299,44 @@ public class FlinkProcess {
             }
         }// Check and get Next watermark close
     } // Punctuated Assigner Close
+    public static class EcgRecSchema implements DeserializationSchema<Tuple3<String, String, Double>> {
+
+        /**
+         * Deserializes the byte message.
+         *
+         * @param message The message, as a byte array.
+         * @return The deserialized message as an object (null if the message cannot be deserialized).
+         */
+        @Override
+        public Tuple3<String, String, Double> deserialize(byte[] message) throws IOException {
+            String record = new String(message);
+            List<String> list = new ArrayList<>(Arrays.asList(record.split(",")));
+            Double signal= Double.parseDouble(list.get(2));
+            Tuple3<String, String, Double> output = new Tuple3<>(list.get(0), list.get(1), signal);
+            return output;
+        }
+
+        /**
+         * Method to decide whether the element signals the end of the stream. If
+         * true is returned the element won't be emitted.
+         *
+         * @param nextElement The element to test for the end-of-stream signal.
+         * @return True, if the element signals end of stream, false otherwise.
+         */
+        @Override
+        public boolean isEndOfStream(Tuple3<String, String, Double> nextElement) {
+            return false;
+        }
+
+        /**
+         * Gets the data type (as a {@link TypeInformation}) produced by this function or input format.
+         *
+         * @return The data type produced by this function or input format.
+         */
+        @Override
+        public TypeInformation<Tuple3<String, String, Double>> getProducedType() {
+            return TypeInformation
+                    .of(new TypeHint<Tuple3<String, String, Double>>() { });
+        }
+    } //EcgRecSchema
 }//FLINK PROCESS CLASS FUNCTION CLOSE
