@@ -28,14 +28,15 @@ class Producer(object):
 
 #        self.kafka_config = helpers.parse_config(kafka_config_infile)
 #        self.s3bucket_config = helpers.parse_config(s3bucket_config_infile)
-        self.producer = KafkaProducer(bootstrap_servers=ip_addr)
+        self.producer = KafkaProducer(bootstrap_servers=ip_addr, linger_ms=4000)
 
     def produce_ecg_signal_msgs(self, file_key):
         """
         Produces messages and sends them to topic.
         """
         msg_cnt = 0
-        init_time= datetime.now()
+        tz = pytz.timezone('America/Los_Angeles')
+        init_time= datetime.now(tz)
         fs=360
         while True:
 
